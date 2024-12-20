@@ -9,7 +9,7 @@
 # REV 1.0  -- J. Parker
 
 # Output file
-vols_output=  "/tmp/files-by-vol_$(date +%F_%T)"
+vols_output=files-by-vol_$(date +%F_%T)
 touch ${vols_output}
 
 # Build List of Storage Volumes
