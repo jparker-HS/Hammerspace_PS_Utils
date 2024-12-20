@@ -6,8 +6,10 @@
 # an instance on the selected volume.
 # TO DO: 
 #   
-
 # REV 1.0  -- J. Parker
+
+# Output file
+vols_output = touch "/tmp/files-by-vol_$(date +%F_%T)"
 # Build List of Storage Volumes
 # Prompt for IP address
 read -p "Enter the Cluster IP address: " ip_address
@@ -55,10 +57,13 @@ select vol in "${volumes[@]}"; do
    fi
 done
 
-# Check point - can delete
-echo "You selected: $target_vol"
 
 # Prompt for Hammerspace share
-read -p "Enter the Hammerspace share: " hs_share
+echo "This script will search for files that have an instance on $target_vol"
+echo
+echo "The script will perform a recursivve search from the specified directory\n"
+echo "This directory must be in a Hammerspace share."
+read -p "Enter the directory to start the search: " hs_share
 
-/usr/local/bin/hs eval -r -e 'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' ${hs_share}
+/usr/local/bin/hs eval -r -e 'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' ${hs_share} | tee ${vols_output}
+echo "Output h"
