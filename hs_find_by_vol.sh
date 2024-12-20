@@ -4,68 +4,86 @@
 # This will list all storage and object volumes.
 # User is prompted for a share to evaluate then we find and list all files with
 # an instance on the selected volume.
-# TO DO: 
-#   
+# TO DO:
+#
 # REV 1.0  -- J. Parker
+# Rev 1.1 -- 20-Ded-24 J.Parker optimized and cleaned up initial run
 
-# Output file
-vols_output=files-by-vol_$(date +%F_%T)
-touch ${vols_output}
+clear
 
-# Build List of Storage Volumes
-# Prompt for IP address
+# Prompt for initials and company name early
+read -p 'Your Initials: ' hssevar
+read -p 'Customer Name (shortened is fine, no spaces): ' companyvar
+DATESTAMP=$(date +"%Y%m%d_%H%M")
+vols_output="${hssevar}-${companyvar}-${DATESTAMP}-instances.log"
+touch "$vols_output"
+
+# Prompt for IP address and admin password
 read -p "Enter the Cluster IP address: " ip_address
-
-# Prompt for password (hidden input)
 read -s -p "Enter the admin password: " admin_password
-echo  # Add newline after hidden password input
+echo
 
-# Make the API call using the provided values
-curl -k -X GET "https://${ip_address}/mgmt/v1.2/rest/storage-volumes" \
-    -u "admin:${admin_password}" \
-    -H "accept: application/json" | \
-    jq ".[] | .associatedLocations[]| .storageVolume.name" | \
-    grep -v null > /tmp/${ip_address}_svols.out
+# Fetch and process volume data
+get_volumes() {
+    local endpoint="$1"
+    local output_file="$2"
 
-# Check if the curl command succeeded
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to retrieve storage volumes. Please check your credentials and connectivity."
-    exit 1
-fi
+    curl -k -s -X GET "https://${ip_address}/mgmt/v1.2/rest/${endpoint}" \
+        -u "admin:${admin_password}" \
+        -H "accept: application/json" | \
+        jq -r ".[] | .name // .associatedLocations[].storageVolume.name" | \
+        grep -v null > "$output_file"
 
-# Build List of Object Volumes
-# Make the API call using the provided values
-curl -k -X GET "https://${ip_address}/mgmt/v1.2/rest/object-storage-volumes" \
-    -u "admin:${admin_password}" \
-    -H "accept: application/json" | \
-    jq ".[] | .name" > /tmp/${ip_address}_osvols.out
+    if [ $? -ne 0 ] || [ ! -s "$output_file" ]; then
+        echo "Error: Failed to retrieve volumes from ${endpoint}."
+        exit 1
+    fi
+}
 
-# Check if the curl command succeeded
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to retrieve storage volumes. Please check your credentials and connectivity."
-    exit 1
-fi
+# Get storage and object volumes
+storage_vols="/tmp/${ip_address}_svols.out"
+object_vols="/tmp/${ip_address}_osvols.out"
+get_volumes "storage-volumes" "$storage_vols"
+get_volumes "object-storage-volumes" "$object_vols"
 
-# Combine both volume files into a temporary array
-mapfile -t volumes < <(cat  /tmp/${ip_address}_osvols.out  /tmp/${ip_address}_svols.out)
+echo -e "The following volumes are present on ${ip_address}" | tee -a "$vols_output"
+echo -e  "--------------------------------------------------------------" | tee -a "$vols_output"
+# Combine volumes into a list
+mapfile -t volumes < <(cat "$storage_vols" "$object_vols" | sort -u)
 
-# Remove empty lines and create menu
+# Create a menu for volume selection
 PS3="Select a volume: "
-select vol in "${volumes[@]}"; do
-   if [ -n "$vol" ]; then
-       # Remove quotes and store in target_vol
-       target_vol=$(echo "$vol" | tr -d '"')
-       break
-   fi
+select target_vol in "${volumes[@]}"; do
+    if [ -n "$target_vol" ]; then
+        break
+    fi
+    echo "Invalid selection. Please choose a valid volume."
 done
 
+# Fetch list of Shares
+share_list="/tmp/${ip_address}_shares.out"
+curl -k -s -u "admin:${admin_password}" -X GET "https://${ip_address}/mgmt/v1.2/rest/shares" -H "accept: application/json" | jq .[].name | grep -v root > "$share_list"
+echo -e "Current shares on the Cluster at ${ip_address} are:"
+cat ${share_list} | tee -a "$vols_output"
 
-# Prompt for Hammerspace share
-echo "This script will search for files that have an instance on $target_vol"
-echo
-echo "The script will perform a recursivve search from the specified directory\n"
-echo "This directory must be in a Hammerspace share."
+# List NFS mounted volumes. These are for reference. Might turn this into a menu.
+echo -e "--------------------------------------------------------------" | tee -a "$vols_output"
+echo -e "NFS volumes mounted on this host:" | tee -a "$vols_output"
+echo -e "\n"
+mount -t nfs | tee -a "$vols_output"
+mount -t nfs4 | tee -a "$vols_output"
+
+# Prompt for Hammerspace share directory
+echo -e "\nThis script will search for files that have an instance on the volume: $target_vol" | tee -a "$vols_output"
 read -p "Enter the directory to start the search: " hs_share
 
-/usr/local/bin/hs eval -r -e 'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' ${hs_share} | tee ${vols_output}
+# Perform recursive search
+echo "Searching for files on volume $target_vol starting at $hs_share..." | tee -a "$vols_output"
+/usr/local/bin/hs eval -r -e \
+    'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' \
+    "$hs_share" >> "$vols_output"
+
 echo "Output has been saved in $vols_output"
+
+# Clean up temporary files
+rm -f "$storage_vols" "$object_vols" "$share_list"
