@@ -77,7 +77,11 @@ mount -t nfs4 | tee -a "$vols_output"
 echo -e "\nThis script will search for files that have an instance on the volume: $target_vol" | tee -a "$vols_output"
 read -p "Enter the directory to start the search: " hs_share
 
-# Perform recursive search
+# Total # of files and total space used of files on this volume from the supplied directory
+echo -e "Total number of files, Space Used" | tee -a "$vols_output"
+hs sum -e 'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?{1FILE/FILE,SPACE_USED/BYTES}' "$hs_share" | tee -a "$vols_output"
+
+# Perform recursive search for file list
 echo "Searching for files on volume $target_vol starting at $hs_share..." | tee -a "$vols_output"
 /usr/local/bin/hs eval -r -e \
     'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' \
