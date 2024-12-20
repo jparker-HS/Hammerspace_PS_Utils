@@ -9,7 +9,9 @@
 # REV 1.0  -- J. Parker
 
 # Output file
-vols_output = touch "/tmp/files-by-vol_$(date +%F_%T)"
+vols_output=  "/tmp/files-by-vol_$(date +%F_%T)"
+touch ${vols_output}
+
 # Build List of Storage Volumes
 # Prompt for IP address
 read -p "Enter the Cluster IP address: " ip_address
@@ -66,4 +68,4 @@ echo "This directory must be in a Hammerspace share."
 read -p "Enter the directory to start the search: " hs_share
 
 /usr/local/bin/hs eval -r -e 'IS_FILE&&!ISNA(instances[|volume=storage_volume("'"$target_vol"'")])&&ROWS(INSTANCES)==1?PATH' ${hs_share} | tee ${vols_output}
-echo "Output h"
+echo "Output has been saved in $vols_output"
