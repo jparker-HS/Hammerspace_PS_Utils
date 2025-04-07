@@ -3,6 +3,7 @@
 # Add volumes, assimilate then decommission.
 # Author J. Parker, 04/05/2025
 # Version 0.1 -- written for a customer that needs to assimilate a large number of volumes into a single, or limited number of shares. Ver 0.1 is basic AF and needs more error checking. This is a logic run to make sure the overall process worked.
+# Version 1.1 -- Removed Decomm process and added some more logging. Combined vol add and assimilation into singel CLI
 
 # Generate timestamp for the log file
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -18,24 +19,24 @@ tail -n +2 "$1" | while IFS=',' read -r LV_NAME NODE_NAME SHARE_NAME DEST_PATH; 
   while true; do
     RUNNING_TASKS=$(hscli task-list --name volume-assimilation 2>> "$LOG_FILE" | grep "Status: *EXECUTING" | wc -l)
     echo "Number of running volume assimilation tasks: $RUNNING_TASKS" >> "$LOG_FILE"
-    if [[ "$RUNNING_TASKS" -lt 2 ]]; then
+    if [[ "$RUNNING_TASKS" -lt 6 ]]; then
       break
     fi
-    echo "More than 2 volume assimilation tasks are running. Waiting..." >> "$LOG_FILE"
+    echo "More than 5 volume assimilation tasks are running. Waiting..." >> "$LOG_FILE"
     sleep 60 # Wait for 60 seconds before checking again
   done
 
   # Add the volume
   echo "Adding volume: $LV_NAME on $NODE_NAME" >> "$LOG_FILE"
-  hscli volume-add --async --logical-volume-name "$LV_NAME" --node-name "$NODE_NAME" --access-type READ_ONLY >> "$LOG_FILE" 2>&1
+  hscli volume-add --async --log-assimilation --assimilation --destination-path "$DEST_PATH" --skip-file-access-test --skip-performance-test --share-name "$SHARE_NAME" --logical-volume-name "$LV_NAME" --node-name "$NODE_NAME" --access-type READ_ONLY >> "$LOG_FILE" 2>&1
   echo "Volume addition initiated. Waiting for 30 seconds..." >> "$LOG_FILE"
   sleep 30
 
-  # Perform volume assimilation
-  VOL_NAME="$NODE_NAME::$LV_NAME" # We can look at changing this to use ID but that will take a query.
-  echo "Starting volume assimilation for $VOL_NAME" >> "$LOG_FILE"
-  hscli volume-assimilation --async --log --name "$VOL_NAME" --share-name "$SHARE_NAME" --destination-path "$DEST_PATH" --skip-file-access-test >> "$LOG_FILE" 2>&1
-  echo "Volume assimilation initiated for $VOL_NAME" >> "$LOG_FILE"
+  # Perform volume assimilation -- combined with volume add
+#  VOL_NAME="$NODE_NAME::$LV_NAME" # We can look at changing this to use ID but that will take a query.
+ # echo "Starting volume assimilation for $VOL_NAME" >> "$LOG_FILE"
+ # hscli volume-assimilation --async --log --name "$VOL_NAME" --share-name "$SHARE_NAME" --destination-path "$DEST_PATH" --skip-file-access-test >> "$LOG_FILE" 2>&1
+ # echo "Volume assimilation initiated for $VOL_NAME" >> "$LOG_FILE"
   echo "####################" >> "$LOG_FILE"
   echo "" >> "$LOG_FILE"
 done
@@ -43,7 +44,8 @@ done
 echo "Finished adding and assimilating all volumes from the input file." >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 echo "The following assimilations are still running check to see if they are long running or have hung" >> "$LOG_FILE"
-hscli task-list --name volume-assimilation --status EXECUTING >> "$LOG_FILE" 
+hscli task-list --name volume-assimilation --status EXECUTING >> "$LOG_FILE"
+
 
 
 
