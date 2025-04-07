@@ -16,7 +16,7 @@ tail -n +2 "$1" | while IFS=',' read -r LV_NAME NODE_NAME SHARE_NAME DEST_PATH; 
 
   # Check for running volume assimilation tasks
   while true; do
-    RUNNING_TASKS=$(hscli task-list --name volume-assimilation 2>> "$LOG_FILE" | grep "Status: *RUNNING" | wc -l)
+    RUNNING_TASKS=$(hscli task-list --name volume-assimilation 2>> "$LOG_FILE" | grep "Status: *EXECUTING" | wc -l)
     echo "Number of running volume assimilation tasks: $RUNNING_TASKS" >> "$LOG_FILE"
     if [[ "$RUNNING_TASKS" -lt 2 ]]; then
       break
@@ -36,20 +36,30 @@ tail -n +2 "$1" | while IFS=',' read -r LV_NAME NODE_NAME SHARE_NAME DEST_PATH; 
   echo "Starting volume assimilation for $VOL_NAME" >> "$LOG_FILE"
   hscli volume-assimilation --async --log --name "$VOL_NAME" --share-name "$SHARE_NAME" --destination-path "$DEST_PATH" --skip-file-access-test >> "$LOG_FILE" 2>&1
   echo "Volume assimilation initiated for $VOL_NAME" >> "$LOG_FILE"
+  echo "####################" >> "$LOG_FILE"
+  echo "" >> "$LOG_FILE"
 done
 
 echo "Finished adding and assimilating all volumes from the input file." >> "$LOG_FILE"
+echo "" >> "$LOG_FILE"
+echo "The following assimilations are still running check to see if they are long running or have hung" >> "$LOG_FILE"
+hscli task-list --name volume-assimilation --status EXECUTING >> "$LOG_FILE" 
 
-# Decommission volumes
-# We will need more checks in this section. For one we will want to make sure assimilations are completee before decomm. Then make sure decomm is done before remove.
-echo "Starting volume decommissioning..." >> "$LOG_FILE"
-tail -n +2 "$1" | while IFS=',' read -r LV_NAME NODE_NAME _ _; do
-  VOLUME_TO_DECOMMISSION="$NODE_NAME::$LV_NAME"
-  echo "Decommissioning volume: $VOLUME_TO_DECOMMISSION" >> "$LOG_FILE"
-  hscli volume-decommission --name "$VOLUME_TO_DECOMMISSION" >> "$LOG_FILE" 2>&1
-done
 
-echo "Volume decommissioning process completed at $(date)" >> "$LOG_FILE"
 
-echo "Logs can be found in: $LOG_FILE"
+
+# Decommission volumes -- Pull out and place in a separate script
+# We will need more checks in this section. For one we will want to make sure assimilations are completed before decomm. Then make sure decomm is done before remove.
+#echo "Starting volume decommissioning..." >> "$LOG_FILE"
+#tail -n +2 "$1" | while IFS=',' read -r LV_NAME NODE_NAME _ _; do
+#  VOLUME_TO_DECOMMISSION="$NODE_NAME::$LV_NAME"
+#  echo "Decommissioning volume: $VOLUME_TO_DECOMMISSION" >> "$LOG_FILE"
+#  hscli volume-decommission --name "$VOLUME_TO_DECOMMISSION" >> "$LOG_FILE" 2>&1
+#  sleep 120
+#  hscli volume-remove --name "$VOLUME_TO_DECOMMISSION" >> "$LOG_FILE" 2>&1
+#done
+
+#echo "Volume decommissioning process completed at $(date)" >> "$LOG_FILE"
+
+#echo "Logs can be found in: $LOG_FILE"
 
